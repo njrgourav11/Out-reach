@@ -10,8 +10,14 @@ dotenv.config();
 const app  = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors({ origin: 'http://localhost:5173' }));
+app.use(cors());
 app.use(express.json());
+
+// Logging middleware to inspect URL forwarding on Vercel
+app.use((req, res, next) => {
+  console.log(`📥 [Express] ${req.method} ${req.url} (originalUrl: ${req.originalUrl})`);
+  next();
+});
 
 import fs from 'fs';
 import path from 'path';
@@ -61,11 +67,17 @@ export function saveToDisk() {
   }
 }
 
+// Support routing under both '/api' prefixed paths and plain subpaths in case of Vercel rewrites/stripping
 app.use('/api/search', searchRouter);
-app.use('/api/leads',  leadsRouter);
-app.use('/api/email',  emailRouter);
+app.use('/search', searchRouter);
 
-app.get('/api/health', (req, res) => {
+app.use('/api/leads',  leadsRouter);
+app.use('/leads',  leadsRouter);
+
+app.use('/api/email',  emailRouter);
+app.use('/email',  emailRouter);
+
+app.get(['/api/health', '/health'], (req, res) => {
   res.json({
     status: 'ok',
     message: 'US Outreach API running',
