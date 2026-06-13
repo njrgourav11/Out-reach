@@ -93,3 +93,5 @@ app.listen(PORT, () => {
 });
 
 // Restart trigger comment (nvidia key reload)
+
+export default app;
