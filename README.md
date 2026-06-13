@@ -1,4 +1,4 @@
-# 🌐 US Outreach Tool — Sandysource
+# 🌐 US Outreach Tool
 
 Find US businesses → Extract emails → AI cold emails → Send via Gmail
 
@@ -48,9 +48,9 @@ Edit `.env` and fill in:
 GROQ_API_KEY=gsk_...
 GMAIL_USER=youremail@gmail.com
 GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
-YOUR_NAME=Sandy
-YOUR_BRAND=Sandysource
-YOUR_PORTFOLIO=https://sandysource.vercel.app
+YOUR_NAME=Gourav
+YOUR_BRAND=Gourav.blog
+YOUR_PORTFOLIO=https://gourav.blog
 YOUR_SERVICES=website development, web apps, UI/UX design
 ```
 
@@ -151,4 +151,4 @@ us-outreach/
 
 ---
 
-Built with ❤️ by Sandysource — sandysource.vercel.app
+Built with ❤️ — Powered by OpenStreetMap & AI

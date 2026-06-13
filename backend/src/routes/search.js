@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { searchBusinesses } from '../services/osmPlaces.js';
+import { searchGoogleBusinesses } from '../services/googlePlaces.js';
 import { extractEmail } from '../services/emailExtractor.js';
-import { leadsStore } from '../index.js';
+import { checkEmailDomainHasWebsite } from '../services/domainVerifier.js';
+import { leadsStore, saveToDisk } from '../index.js';
 
 const router = Router();
 
@@ -10,26 +12,54 @@ const router = Router();
 router.post('/', async (req, res) => {
   const { niche, city, limit = 20 } = req.body;
 
-  if (!niche || !city) {
-    return res.status(400).json({ error: 'niche and city are required' });
+  if (!niche) {
+    return res.status(400).json({ error: 'niche is required' });
   }
 
+  const hasApiKey = !!process.env.GOOGLE_PLACES_API_KEY;
+
   try {
-    console.log(`\n🔍 Searching: "${niche}" in "${city}" (limit: ${limit})`);
-    const businesses = await searchBusinesses(niche, city, Number(limit));
-    console.log(`✅ Found ${businesses.length} businesses`);
+    let businesses = [];
+    let source = 'openstreetmap';
+
+    if (hasApiKey) {
+      console.log(`\n🔍 Searching Google Maps: "${niche}" in "${city || 'Global'}" (limit: ${limit})`);
+      businesses = await searchGoogleBusinesses(niche, city, Number(limit));
+      source = 'google_maps';
+    } else {
+      console.log(`\n🔍 Searching OpenStreetMap (OSM): "${niche}" in "${city || 'Global'}" (limit: ${limit})`);
+      businesses = await searchBusinesses(niche, city, Number(limit));
+      source = 'openstreetmap';
+    }
+
+    const verified = await Promise.all(
+      businesses.map(async (b) => {
+        if (b.email && b.email.trim() !== '') {
+          const hasWebsite = await checkEmailDomainHasWebsite(b.email);
+          if (hasWebsite) {
+            console.log(`   ⏭️ Skipping ${b.name} (has active website on domain)`);
+            return null;
+          }
+          return b;
+        }
+        return null;
+      })
+    );
+    const withEmail = verified.filter(Boolean).filter(b => !b.website);
+    console.log(`✅ Found ${withEmail.length} businesses with email and no website`);
 
     // Add to leads store (skip duplicates)
     const existingIds = new Set(leadsStore.map(l => l.id));
-    const newLeads = businesses.filter(b => !existingIds.has(b.id));
+    const newLeads = withEmail.filter(b => !existingIds.has(b.id));
     leadsStore.push(...newLeads);
+    saveToDisk();
 
     res.json({
       success: true,
-      found: businesses.length,
+      found: withEmail.length,
       newAdded: newLeads.length,
-      source: 'openstreetmap',
-      leads: businesses,
+      source: source,
+      leads: withEmail,
     });
   } catch (err) {
     console.error('Search error:', err.message);
@@ -49,6 +79,7 @@ router.post('/enrich/:id', async (req, res) => {
     lead.email = email;
     lead.emailStatus = email ? 'found' : 'not_found';
     lead.enrichedAt = new Date().toISOString();
+    saveToDisk();
 
     console.log(`   → Email: ${email || 'not found'}`);
     res.json({ success: true, email, lead });
@@ -87,6 +118,7 @@ router.post('/enrich-all', async (req, res) => {
         lead.email = email;
         lead.emailStatus = email ? 'found' : 'not_found';
         lead.enrichedAt = new Date().toISOString();
+        saveToDisk();
         if (email) {
           found++;
           console.log(`   ✅ ${lead.name}: ${email}`);

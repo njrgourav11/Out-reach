@@ -19,8 +19,8 @@ export async function sendEmail({ to, subject, body, fromName }) {
   }
 
   const transporter = createTransporter();
-  const name  = fromName || process.env.YOUR_NAME  || 'Sandy';
-  const brand = process.env.YOUR_BRAND || 'Sandysource';
+  const name  = fromName || process.env.YOUR_NAME  || 'Gourav';
+  const brand = process.env.YOUR_BRAND || 'Gourav.blog';
 
   const info = await transporter.sendMail({
     from: `"${name} @ ${brand}" <${process.env.GMAIL_USER}>`,
@@ -58,7 +58,7 @@ function bodyToHtml(body, name, brand) {
   ${lines}
   <hr style="margin: 24px 0; border: none; border-top: 1px solid #e5e5e5;">
   <p style="font-size: 12px; color: #888; margin: 0;">
-    ${name} · <a href="https://sandysource.vercel.app" style="color: #888;">${brand}</a>
+    ${name} · <a href="${process.env.YOUR_PORTFOLIO || 'https://gourav.blog'}" style="color: #888;">${brand}</a>
     <br>You received this because we found your business online. Reply "unsubscribe" to opt out.
   </p>
 </body>

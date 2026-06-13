@@ -87,7 +87,12 @@ function normalizeUrl(url) {
 }
 
 function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length < 100;
+  const isFormatValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length < 100;
+  if (!isFormatValid) return false;
+
+  // Filter out false positive email matches from image assets/retina graphics (e.g., logo@2x.png)
+  const isAsset = /\.(png|jpg|jpeg|gif|svg|webp|pdf|zip|gz|tar|mp3|mp4|css|js|woff2|woff|ttf|eot)$/i.test(email);
+  return !isAsset;
 }
 
 function sleep(ms) {

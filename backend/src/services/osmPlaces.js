@@ -51,11 +51,17 @@ function getOSMTag(niche) {
   return `"name"~"${niche}",i`;
 }
 
+function getUserAgent() {
+  const brand = (process.env.YOUR_BRAND || 'Gourav.blog').replace(/\s+/g, '');
+  const portfolio = (process.env.YOUR_PORTFOLIO || 'https://gourav.blog').replace(/^https?:\/\//, '');
+  return `${brand}Outreach/1.0 (${portfolio})`;
+}
+
 async function geocodeCity(city) {
   const { data } = await axios.get(NOMINATIM, {
     params: { q: `${city}, USA`, format: 'json', limit: 1 },
     headers: {
-      'User-Agent': 'SandysourceOutreach/1.0 (sandysource.vercel.app)',
+      'User-Agent': getUserAgent(),
       'Accept-Language': 'en',
     },
     timeout: 10000,
@@ -95,92 +101,91 @@ function extractEmail(tags = {}) {
 }
 
 export async function searchBusinesses(niche, city, limit = 20) {
-  console.log(`\n🗺️  Geocoding "${city}"...`);
-  const { lat, lon } = await geocodeCity(city);
-  console.log(`   ✅ Coordinates: ${lat}, ${lon}`);
-
   const osmTag = getOSMTag(niche);
-  const radius = 20000; // 20km radius
+  let query = '';
 
-  const query = `
-[out:json][timeout:30];
+  const isLocal = city && city.trim() !== '';
+
+  if (isLocal) {
+    console.log(`\n🗺️  Geocoding "${city}"...`);
+    const { lat, lon } = await geocodeCity(city);
+    console.log(`   ✅ Coordinates: ${lat}, ${lon}`);
+    const radius = 20000; // 20km radius
+
+    // Local search for businesses with email and no website
+    query = `
+[out:json][timeout:35];
 (
-  node[${osmTag}](around:${radius},${lat},${lon});
-  way[${osmTag}](around:${radius},${lat},${lon});
+  node[${osmTag}]["email"][!"website"](around:${radius},${lat},${lon});
+  node[${osmTag}]["contact:email"][!"website"](around:${radius},${lat},${lon});
+  way[${osmTag}]["email"][!"website"](around:${radius},${lat},${lon});
+  way[${osmTag}]["contact:email"][!"website"](around:${radius},${lat},${lon});
 );
-out body;
+out body ${limit};
 `;
-
-  console.log(`\n🔍 Querying Overpass API for "${niche}" near ${city}...`);
-
- const { data } = await axios.get(OVERPASS, {
-  params: { data: query },
-  headers: {
-    'Accept': 'application/json',
-    'User-Agent': 'SandysourceOutreach/1.0',
-  },
-  timeout: 35000,
-});
-
-  const elements = (data.elements || []).filter(el => el.tags?.name);
-
-  if (elements.length === 0) {
-    console.log('⚠️  No results from Overpass — returning mock data');
-    return getMockBusinesses(niche, city, limit);
+    console.log(`\n🔍 Querying Overpass API for "${niche}" near "${city}" (with email & no website, limit: ${limit})...`);
+  } else {
+    // Global search for businesses with email and no website (restricted to US area for speed and to avoid timeouts)
+    query = `
+[out:json][timeout:90];
+area["ISO3166-1"="US"]->.usa;
+(
+  node[${osmTag}]["email"][!"website"](area.usa);
+  node[${osmTag}]["contact:email"][!"website"](area.usa);
+  way[${osmTag}]["email"][!"website"](area.usa);
+  way[${osmTag}]["contact:email"][!"website"](area.usa);
+);
+out body ${limit};
+`;
+    console.log(`\n🔍 Querying Overpass API for US-wide "${niche}" (with email & no website, limit: ${limit})...`);
   }
 
-  console.log(`   ✅ Found ${elements.length} raw results, trimming to ${limit}`);
+  let elements = [];
+  try {
+    const { data } = await axios.get(OVERPASS, {
+      params: { data: query },
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': getUserAgent(),
+      },
+      timeout: isLocal ? 35000 : 95000, // Longer timeout for global planet query
+    });
+    elements = (data.elements || []).filter(el => el.tags?.name);
+  } catch (err) {
+    console.warn(`⚠️  Overpass API error (${err.message})`);
+    throw new Error(`OpenStreetMap API search timed out or encountered a network error. Please try again.`);
+  }
 
-  return elements.slice(0, limit).map((el) => {
-    const tags = el.tags || {};
-    const email = extractEmail(tags);
-    return {
-      id: `osm_${el.type}_${el.id}`,
-      name: tags.name,
-      address: formatAddress(tags),
-      phone: extractPhone(tags),
-      website: extractWebsite(tags),
-      rating: null,       // OSM doesn't have ratings
-      totalRatings: 0,
-      businessType: niche,
-      city,
-      email: email || null,
-      emailStatus: email ? 'found' : 'pending',
-      outreachStatus: 'new',
-      source: 'openstreetmap',
-      createdAt: new Date().toISOString(),
-    };
-  });
-}
+  if (elements.length === 0) {
+    console.log('⚠️  No results found from Overpass API');
+    return [];
+  }
 
-// ─── MOCK DATA (used when Overpass returns nothing) ───────────────────────────
-function getMockBusinesses(niche, city, limit) {
-  const mockNames = [
-    'Bright Smile Dental', 'City Center Clinic', 'Main Street Bakery',
-    'Prestige Auto Repair', 'Green Leaf Pharmacy', 'Sunrise Yoga Studio',
-    'Lakeside Plumbing', 'Elite Hair Salon', 'Quick Fix Electronics',
-    'Blue Ridge Real Estate', 'Harmony Chiropractic', 'Summit Fitness',
-    'Golden Fork Restaurant', 'Pacific Accounting', 'Riverside Law Office',
-    'Metro Tax Services', 'Coastal Pet Care', 'Pinewood Landscaping',
-    'Urban Brew Coffee', 'Eagle Eye Photography',
-  ];
+  console.log(`   ✅ Found ${elements.length} results`);
 
-  return mockNames.slice(0, limit).map((name, i) => ({
-    id: `mock_${i}_${Date.now()}`,
-    name,
-    address: `${100 + i * 10} Main St, ${city}, USA`,
-    phone: `+1 (555) ${100 + i}-${1000 + i}`,
-    website: `https://www.${name.toLowerCase().replace(/\s/g, '')}.com`,
-    rating: null,
-    totalRatings: 0,
-    businessType: niche,
-    city,
-    email: null,
-    emailStatus: 'pending',
-    outreachStatus: 'new',
-    source: 'mock',
-    createdAt: new Date().toISOString(),
-  }));
+  return elements
+    .map((el) => {
+      const tags = el.tags || {};
+      const email = extractEmail(tags);
+      return {
+        id: `osm_${el.type}_${el.id}`,
+        name: tags.name,
+        address: formatAddress(tags),
+        phone: extractPhone(tags),
+        website: extractWebsite(tags),
+        rating: null,       // OSM doesn't have ratings
+        totalRatings: 0,
+        businessType: niche,
+        city: city || tags['addr:city'] || 'Global',
+        email: email || null,
+        emailStatus: email ? 'found' : 'pending',
+        outreachStatus: 'new',
+        source: 'openstreetmap',
+        createdAt: new Date().toISOString(),
+      };
+    })
+    .filter(b => b.email && b.email.trim() !== '')
+    .slice(0, limit);
 }
 
 export { NICHE_MAP };

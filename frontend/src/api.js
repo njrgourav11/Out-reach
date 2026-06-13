@@ -29,6 +29,9 @@ export const leadsAPI = {
   clearAll: () =>
     api.delete('/leads').then(r => r.data),
 
+  sync: (leads) =>
+    api.post('/leads/sync', { leads }).then(r => r.data),
+
   exportCSV: () =>
     window.open('/api/leads/export.csv', '_blank'),
 };
@@ -42,6 +45,9 @@ export const emailAPI = {
 
   send: (leadId, overrides = {}) =>
     api.post(`/email/send/${leadId}`, overrides).then(r => r.data),
+
+  sendBulk: () =>
+    api.post('/email/send-bulk').then(r => r.data),
 
   getLogs: () =>
     api.get('/email/logs').then(r => r.data),
